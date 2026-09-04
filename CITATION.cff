@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+title: >-
+  Transcriptomic analyses in neurodevelopment — a two-hour
+  tutorial with continuous assessment
+message: >-
+  If you reuse or adapt this teaching material, please cite it
+  using these metadata.
+type: software
+authors:
+  - given-names: Adrien
+    family-names: Dufour
+    email: adrien.dufour@inserm.fr
+    affiliation: Inserm
+repository-code: https://github.com/adrdufour/M2BD-transcriptomics
+abstract: >-
+  A two-hour session for M2 Brain Disorders students covering bulk
+  RNA-seq, single-cell and spatial transcriptomics, with a graded
+  practical in Google Colab. Three simulated datasets are generated
+  from one shared cell-type expression profile matrix, so that the
+  bulk signal is genuinely a mixture of the single-cell reference and
+  deconvolution can be taught and assessed with real evidence rather
+  than by assertion. Includes the notebook, the datasets, a printable
+  figure handout and the generator.
+keywords:
+  - transcriptomics
+  - single-cell RNA-seq
+  - spatial transcriptomics
+  - deconvolution
+  - neurodevelopment
+  - teaching
+license: MIT
+version: 1.0.0
+date-released: '2026-09-04'

@@ -1,0 +1,46 @@
+# ---------------------------------------------------------------------------
+# INSTRUCTOR MATERIAL — must never reach this repository.
+# These patterns are the reason this file exists. Do not relax them.
+# ---------------------------------------------------------------------------
+CC_answer_key*
+CC_instructor*
+CC_marking_sheet*
+*answer_key*
+*_instructor*
+expected_outputs.json
+
+# The instructor build of the datasets keeps obs['true_cell_type'],
+# obs['true_compartment'] and obsm['true_proportions'] — i.e. the answers to
+# Q4, Q5 and Q6. Build it anywhere but here.
+instructor_data/
+data_instructor/
+*_with_truth.h5ad
+
+# Marked scripts and anything with a student's name on it
+marks/
+submissions/
+*_marked.*
+
+# ---------------------------------------------------------------------------
+# Ordinary noise
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/
+env/
+
+# Notebook output written at runtime, not source
+/figures/*.png.tmp
+executed.ipynb
+*.log
+
+# LibreOffice / Office lock files
+.~lock.*#
+~$*
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

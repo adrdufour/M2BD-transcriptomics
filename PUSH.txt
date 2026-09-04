@@ -1,0 +1,16 @@
+Créer le dépôt sur github.com sous le nom  adrdufour/M2BD-transcriptomics
+(sans README, sans .gitignore, sans licence — ils sont déjà là), puis :
+
+    cd M2BD-transcriptomics
+    git init -b main
+    git add -A
+    git status                      # vérifier qu'aucun fichier instructeur n'apparaît
+    git commit -m "M2BD transcriptomics practical: notebook, datasets, handout"
+    git remote add origin git@github.com:adrdufour/M2BD-transcriptomics.git
+    git push -u origin main
+
+Le badge Colab du README et l'URL des données pointent déjà sur ce nom.
+Sous un autre nom : remplacer adrdufour/M2BD-transcriptomics dans README.md
+et dans la variable REPO de la cellule de setup du notebook.
+
+Ce fichier peut être supprimé.
