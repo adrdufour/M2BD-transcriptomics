@@ -61,14 +61,17 @@ IN_COLAB = "google.colab" in sys.modules
 if IN_COLAB:
     subprocess.run("pip install -q scanpy leidenalg igraph", shell=True, check=False)
 
-# The three datasets live in the course repository. If GitHub is unreachable
-# from this room, the identical data is rebuilt locally from a fixed seed (~5 s),
-# so the session works with no network at all.
+# The three datasets live in the course repository. The two simulated ones
+# (bulk, single-cell) are rebuilt locally from a fixed seed (~5 s) if GitHub is
+# unreachable from this room. The Visium dataset is real data and can only be
+# downloaded: without it, Block C2 is answered from the figure handout.
 REPO = "adrdufour/M2BD-transcriptomics"
 DATA_URL_BASE = os.environ.get(
     "M2BD_DATA_URL", f"https://raw.githubusercontent.com/{{REPO}}/main/data")
 DATA_DIR = pathlib.Path("data"); DATA_DIR.mkdir(exist_ok=True)
-FILES = ["bulk_cortex.h5ad", "fetal_cortex_sc.h5ad", "cortex_visium.h5ad"]
+SIMULATED = ["bulk_cortex.h5ad", "fetal_cortex_sc.h5ad"]
+VISIUM = "rat_visium_SE.h5ad"
+FILES = SIMULATED + [VISIUM]
 
 # --- the two helper modules, written to disk so you can open and read them ---
 pathlib.Path("cc_datasets.py").write_text({DATASETS_LIB!r})
@@ -83,26 +86,31 @@ def _looks_like_h5ad(path):
         return False
 
 
-got_remote = False
-if DATA_URL_BASE:
+def _fetch(f):
+    if _looks_like_h5ad(DATA_DIR / f):
+        return True
     try:
-        for f in FILES:
-            if not _looks_like_h5ad(DATA_DIR / f):
-                urllib.request.urlretrieve(DATA_URL_BASE.rstrip("/") + "/" + f, DATA_DIR / f)
-        got_remote = all(_looks_like_h5ad(DATA_DIR / f) for f in FILES)
-        if not got_remote:
-            print("what downloaded was not an .h5ad — rebuilding locally instead")
+        urllib.request.urlretrieve(DATA_URL_BASE.rstrip("/") + "/" + f, DATA_DIR / f)
     except Exception as e:
-        print("download failed (" + type(e).__name__ + ") — rebuilding locally instead")
+        print("download of " + f + " failed (" + type(e).__name__ + ")")
+    return _looks_like_h5ad(DATA_DIR / f)
 
+
+got_remote = bool(DATA_URL_BASE) and all([_fetch(f) for f in SIMULATED])
 if not got_remote:
+    print("rebuilding the two simulated datasets locally instead")
     import cc_datasets
     cc_datasets.build_all(str(DATA_DIR))
+HAVE_VISIUM = bool(DATA_URL_BASE) and _fetch(VISIUM)
+if not HAVE_VISIUM:
+    print("no Visium data: answer Q6 from the figure handout (Figures 6 and 6b)")
 
 import numpy as np, pandas as pd, scanpy as sc, anndata as ad
 import matplotlib.pyplot as plt
+# figures are drawn inside the notebook, under the cell that makes them
+%matplotlib inline
 import cc_pipeline as cc
-from cc_pipeline import figure1, figure2, figure3, figure4, figure5, figure5b, figure6
+from cc_pipeline import figure1, figure2, figure3, figure4, figure5, figure5b, figure6, figure6b
 
 sc.settings.verbosity = 1
 plt.rcParams["figure.dpi"] = 110
@@ -110,7 +118,8 @@ FIGDIR = pathlib.Path("figures"); FIGDIR.mkdir(exist_ok=True)
 
 print("ready ·", "downloaded" if got_remote else "built locally")
 for f in FILES:
-    print(" ", f, round((DATA_DIR / f).stat().st_size / 1e6, 1), "MB")
+    if (DATA_DIR / f).exists():
+        print(" ", f, round((DATA_DIR / f).stat().st_size / 1e6, 1), "MB")
 ''')
 
 # ------------------------------------------------------------------ BLOCK A
@@ -156,6 +165,7 @@ print("variance explained by the first five PCs:",
 fig, ax = plt.subplots(figsize=(6.4, 4.6))
 figure1(b, ax); fig.tight_layout()
 fig.savefig("figures/figure1.png", dpi=200)
+plt.show()
 ''')
 
 md("""
@@ -183,6 +193,7 @@ else:
     ax.legend(frameon=False, title=COLOUR_BY)
 ax.set_xlabel("PC1"); ax.set_ylabel("PC2"); ax.set_title("same PCA, coloured by " + COLOUR_BY)
 fig.tight_layout()
+plt.show()
 ''')
 
 md("""
@@ -202,6 +213,7 @@ from cc_datasets import SYNAPTIC_MODULE, IMMUNE_MODULE
 fig, ax = plt.subplots(figsize=(6.6, 4.9))
 _, n_sig = figure2(de, SYNAPTIC_MODULE, IMMUNE_MODULE, ax)
 fig.tight_layout(); fig.savefig("figures/figure2.png", dpi=200)
+plt.show()
 
 sig = de[(de.padj < 0.05) & (de.log2FC.abs() > 0.58)]
 print(f"{len(sig)} genes pass:  {int((sig.log2FC < 0).sum())} down and "
@@ -264,6 +276,7 @@ s = cc.block_b_qc(sc_data.copy(), n_mad=N_MAD, mt_mad=MT_MAD)
 
 fig, axes = plt.subplots(1, 3, figsize=(10.2, 3.8))
 figure3(s, axes); fig.tight_layout(); fig.savefig("figures/figure3.png", dpi=200)
+plt.show()
 
 print(s.obs[["out_counts", "out_genes", "out_mt", "qc_fail"]].sum())
 print(f"\\n{int(s.obs.qc_fail.sum())} of {s.n_obs} barcodes flagged "
@@ -311,6 +324,7 @@ code('''
 fig = figure4(s)
 fig.subplots_adjust(left=0.04, right=0.97, top=0.88, bottom=0.24)
 fig.savefig("figures/figure4.png", dpi=200)
+plt.show()
 ''')
 
 code('''
@@ -376,6 +390,7 @@ labels = {c: f"{c} · {MY_LABELS.get(c, c)}" for c in props.columns}
 fig, axes = plt.subplots(1, 2, figsize=(12.2, 4.6), gridspec_kw={"width_ratios": [2.1, 1]})
 _, comp = figure5(props, b.obs, labels, axes)
 fig.tight_layout(); fig.savefig("figures/figure5.png", dpi=200)
+plt.show()
 comp.round(4)
 ''')
 
@@ -401,6 +416,7 @@ adj = cc.adjusted_de(b, props, NEURONAL)
 fig, ax = plt.subplots(figsize=(5.4, 5.0))
 figure5b(adj, SYNAPTIC_MODULE, IMMUNE_MODULE, ax)
 fig.tight_layout(); fig.savefig("figures/figure5b.png", dpi=200)
+plt.show()
 
 syn = adj.index.isin(SYNAPTIC_MODULE)
 print("\\nsynaptic module, down in cases:")
@@ -422,49 +438,118 @@ md("""
 """)
 
 md("""
-### C2 · Where in the tissue? — **Figure 6**
+### C2 · Where in the tissue? — **Figure 6** and **Figure 6b**
 
-`cortex_visium.h5ad` is one section: ~1,500 spots on a hexagonal grid, each 55 µm across, each with a
-full transcriptome and an (x, y) position. The spots are numbered into six groups; nothing tells you
-which is which.
+Unlike the bulk and single-cell data, the Visium data is **real**. It comes from coronal sections of rat
+brain hemispheres, taken **5 and 40 days after a status epilepticus (SE)** or from control animals. You get four sections,
+mounted as two pairs on two slides, so each control is on the same slide as its SE section:
 
-Deconvolve each spot against the same single-cell signature, and the tissue's architecture appears —
-because in a cortex built by radial migration, position *is* the phenotype.
+| Section | Condition | Days after SE | Slide |
+|---|---|---|---|
+| `B_L1_S2` | control | 5 | L1 |
+| `A_L1_S1` | SE | 5 | L1 |
+| `D_L2_S8` | control | 40 | L2 |
+| `C_L2_S7` | SE | 40 | L2 |
+
+Each spot is 55 µm across, the spots are 100 µm apart, and each one gives a whole transcriptome plus
+an (x, y) position on the H&E image. Clustering the spots of all 16 sections of the full experiment
+found the **spatial domains** numbered 1 to 8. The numbers are shuffled: nothing tells you which domain
+is which.
+
+The six-layered neocortex in these sections is what the fetal cortical wall of Blocks A and B turns
+into. Deep layers were born first and upper layers last (*inside-out*), and the position of a neuron
+still tells you its identity.
 """)
 
 code('''
-visium = sc.read_h5ad("data/cortex_visium.h5ad")
+if not HAVE_VISIUM:
+    raise SystemExit("No Visium data in this runtime: use Figures 6 and 6b of the handout.")
 
-common = [g for g in signature.index if g in visium.var_names]
-Xv = cc._dense(visium[:, common]) / cc._dense(visium).sum(1, keepdims=True) * 1e4
-spot_props = cc.deconvolve(pd.DataFrame(Xv, index=visium.obs_names, columns=common),
-                           signature.loc[common])
-
-fig, axes = plt.subplots(1, 2, figsize=(11.6, 5.4), gridspec_kw={"width_ratios": [1, 1.35]})
-figure6(visium, spot_props, labels, axes)
-fig.tight_layout(); fig.savefig("figures/figure6.png", dpi=200)
-''')
-
-code('''
-# The composition of each numbered group, as estimated proportions.
-grp = spot_props.groupby(visium.obs.spot_group.values).mean()
-grp.columns = [labels.get(c, c) for c in grp.columns]
-grp.round(3).T
+visium = sc.read_h5ad("data/rat_visium_SE.h5ad")
+print(visium)
+v = cc.visium_normalise(visium)        # raw counts kept in v.layers["counts"]; log1p(counts per 10k) in v.X
+v.obs.groupby(["section", "condition", "days_post_SE", "slide"], observed=True).size()
 ''')
 
 md("""
-> **Worksheet Q6a.** Order the numbered spot groups from the **ventricular** surface to the **pial**
-> surface, and name the compartment each one is (VZ, SVZ, IZ, SP, CP, MZ). The table above tells you
-> what each group is made of; the marker biology from Block B tells you where that belongs.
->
-> **Worksheet Q6b.** Roughly how many cells are in one 55 µm spot here, and what does that mean for
-> the "cell type" you just assigned to it? The section's own estimate is in
-> `visium.obs.n_cells_estimate` — look at its distribution.
+**QC in space first.** Look at the total counts per spot on the tissue, not only as a distribution.
+Compare the four sections with each other: whatever differs between them before any biology is
+what normalisation has to absorb.
 """)
 
 code('''
-visium.obs.n_cells_estimate.describe()
+fig, axes = plt.subplots(1, 4, figsize=(15, 3.8))
+vmax = np.percentile(v.obs.total_counts, 99)
+for ax, s in zip(axes, v.obs.section.cat.categories):
+    cc.plot_spots(ax, v, s, "total_counts", vmax=vmax, cmap="viridis")
+fig.tight_layout()
+plt.show()
+v.obs.groupby("section", observed=True).total_counts.median()
 ''')
+
+code('''
+SECTION = "B_L1_S2"      # <-- any of the four sections; the domain numbers are the same in all four
+
+fig, axes = plt.subplots(1, 3, figsize=(15.5, 5.0), gridspec_kw={"width_ratios": [1, 1, 1.55]})
+figure6(v, SECTION, axes)
+fig.tight_layout(); fig.savefig("figures/figure6.png", dpi=200)
+plt.show()
+''')
+
+md("""
+Some domains are bands that follow the surface of the brain. To find which side is the pial surface
+and which side faces the white matter, look at one gene at a time on the tissue. Try `Cux2`, `Fezf2`,
+`Tle4`, `Ccn2`, `Mbp`.
+""")
+
+code('''
+GENES = ["Cux2", "Fezf2", "Tle4", "Ccn2"]      # <-- any gene in v.var_names
+
+fig, axes = plt.subplots(1, len(GENES), figsize=(4.2 * len(GENES), 4.0))
+for ax, g in zip(np.atleast_1d(axes), GENES):
+    cc.plot_spots(ax, v, SECTION, g)
+fig.tight_layout()
+plt.show()
+''')
+
+md("""
+> **Worksheet Q6a.** Which numbered domains are **neocortex**? Order them from the **pial surface** to
+> the **white matter** and name the layer(s) each one corresponds to, citing one marker gene for each.
+> Say how you decided which side of the section is the pial surface.
+""")
+
+md("""
+#### SE versus control
+
+Now the same tissue after a status epilepticus. Figure 6b shows *Gfap*, the classic marker of reactive
+astrocytes, on the four sections with one shared colour scale. Below it, every domain is summed into one
+**pseudobulk** profile and compared between SE and control, for a reactive gene (*Gfap*, *Vim*), stable
+astrocyte markers (*Aqp4*, *Slc1a3*), microglial markers (*Aif1*, *Cd68*) and neuronal genes
+(*Hpca*, *Camk2a*, *Snap25*).
+
+A spot is a miniature bulk sample, so the bulk equation of C1 applies to it as well.
+""")
+
+code('''
+GENE = "Gfap"      # <-- try Aif1, Cd68, Vim, Hpca
+
+fig = figure6b(v, GENE)
+fig.savefig("figures/figure6b.png", dpi=200, bbox_inches="tight")
+plt.show()
+''')
+
+code('''
+# The numbers behind the heat maps: log2 fold change SE / control, one column per domain.
+print("day 5");  display(cc.pseudobulk_log2fc(v, cc.GLIOSIS_PANEL, 5).round(2))
+print("day 40"); display(cc.pseudobulk_log2fc(v, cc.GLIOSIS_PANEL, 40).round(2))
+''')
+
+md("""
+> **Worksheet Q6b.** *Gfap* is strongly up in the SE section at day 5. From the spots alone, can you tell
+> whether there are **more astrocytes** or whether each astrocyte makes **more *Gfap***? Use the other
+> genes in Figure 6b as evidence, keep in mind that one spot holds several cells, and name one experiment
+> or analysis that would settle the question.
+""")
 
 md("""
 ### C3 · Q7 — no code
@@ -483,7 +568,7 @@ in the form you used it here.
 ---
 ### Before you hand in
 
-All six figures are saved in `figures/`. Check that the numbers in your answers match your own output,
+All the figures are saved in `figures/`. Check that the numbers in your answers match your own output,
 not the lecture slides.
 """)
 
@@ -494,7 +579,7 @@ for f in sorted(glob.glob("figures/*.png")):
 
 if IN_COLAB:
     from google.colab import files
-    # uncomment to download all six figures as a zip
+    # uncomment to download all the figures as a zip
     # !zip -qr figures.zip figures && files.download("figures.zip")
 ''')
 

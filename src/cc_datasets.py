@@ -1,11 +1,13 @@
 """
-Deterministic generator for the three CC datasets.
+Deterministic generator for the two simulated CC datasets.
 
     bulk_cortex.h5ad      developmental bulk cortex + a case/control contrast
     fetal_cortex_sc.h5ad  mid-gestation cortex nuclei, raw counts, no QC applied
-    cortex_visium.h5ad     one Visium section of fetal cortex, unannotated
 
-All three are built from ONE shared cell-type expression profile matrix e(g, k),
+The third dataset, rat_visium_SE.h5ad, is real data and is not generated here:
+see prepare_visium.py.
+
+Both are built from ONE shared cell-type expression profile matrix e(g, k),
 so that:
   * the single-cell object is a valid reference for deconvolving the bulk object
   * the bulk signal really is  sum_k p_k * e(g, k)  (the "bulk equation", Q5)
@@ -311,83 +313,13 @@ def make_sc(genes, E, idx, rng, n_cells=8000):
 
 
 # --------------------------------------------------------------------------
-# 6.  Visium
-# --------------------------------------------------------------------------
-
-# ventricular surface -> pial surface
-COMPARTMENTS = ["VZ", "SVZ", "IZ", "SP", "CP", "MZ"]
-COMP_MIX = {
-    "VZ":  {"RG": 0.62, "IPC": 0.12, "oRG": 0.08, "Endo": 0.05, "Micro": 0.04, "Astro": 0.03, "ExN_deep": 0.03, "OPC": 0.03},
-    "SVZ": {"oRG": 0.34, "IPC": 0.30, "RG": 0.14, "Micro": 0.06, "Astro": 0.05, "OPC": 0.05, "ExN_deep": 0.04, "Endo": 0.02},
-    "IZ":  {"ExN_deep": 0.30, "ExN_upper": 0.22, "IN_MGE": 0.12, "OPC": 0.11, "IPC": 0.09, "Astro": 0.07, "Micro": 0.05, "Endo": 0.04},
-    "SP":  {"ExN_deep": 0.44, "IN_CGE": 0.14, "IN_MGE": 0.12, "Astro": 0.10, "ExN_upper": 0.08, "Micro": 0.06, "Endo": 0.06},
-    "CP":  {"ExN_upper": 0.45, "ExN_deep": 0.26, "IN_MGE": 0.08, "IN_CGE": 0.07, "Astro": 0.06, "Micro": 0.04, "Endo": 0.04},
-    "MZ":  {"CR": 0.40, "ExN_upper": 0.20, "Astro": 0.14, "IN_CGE": 0.10, "Endo": 0.08, "Micro": 0.08},
-}
-# thickness of each compartment, ventricle -> pia
-COMP_WIDTH = np.array([0.13, 0.19, 0.20, 0.10, 0.30, 0.08])
-# The numbers the students see on Figure 6. Derived from a seeded shuffle rather
-# than written out, so that this file is not an answer key to Q6a.
-GROUP_FOR_COMPARTMENT = dict(zip(
-    COMPARTMENTS, 1 + np.random.default_rng(4919).permutation(len(COMPARTMENTS))))
-
-
-def make_visium(genes, E, idx, rng, n_rows=44, n_cols=34):
-    G = len(genes)
-    xs, ys, comp, frac = [], [], [], []
-    edges = np.concatenate([[0], np.cumsum(COMP_WIDTH)])
-    edges = edges / edges[-1]
-
-    for r in range(n_rows):
-        for c in range(n_cols):
-            x = c * 100.0 + (50.0 if r % 2 else 0.0)
-            y = r * 86.6
-            u = r / (n_rows - 1)                      # 0 = ventricle, 1 = pia
-            u_j = np.clip(u + rng.normal(0, 0.012), 0, 0.999)
-            k = int(np.searchsorted(edges, u_j, side="right") - 1)
-            xs.append(x); ys.append(y); comp.append(COMPARTMENTS[k]); frac.append(u)
-
-    n = len(xs)
-    P = np.zeros((n, len(CELL_TYPES)))
-    for i, cp in enumerate(comp):
-        v = np.array([COMP_MIX[cp].get(ct, 0.0) for ct in CELL_TYPES])
-        v = v + 0.01
-        v *= np.exp(rng.normal(0, 0.22, v.size))
-        P[i] = v / v.sum()
-
-    mu = (E @ P.T).T
-    depth = np.exp(rng.normal(np.log(6500), 0.30, n))
-    mu = mu / mu.sum(1, keepdims=True) * depth[:, None]
-    X = rng.poisson(mu).astype(np.float32)
-
-    obs = pd.DataFrame(
-        {"true_compartment": comp,
-         "spot_group": [GROUP_FOR_COMPARTMENT[c] for c in comp],
-         "radial_fraction": np.round(frac, 3),
-         "n_cells_estimate": rng.integers(2, 11, n)},
-        index=pd.Index([f"SPOT_{i:04d}" for i in range(n)], name="spot"),
-    )
-    A = ad.AnnData(X=sparse.csr_matrix(X), obs=obs,
-                   var=pd.DataFrame(index=pd.Index(genes, name="gene")))
-    A.obsm["spatial"] = np.column_stack([np.array(xs), np.array(ys)]).astype(np.float32)
-    A.obsm["true_proportions"] = pd.DataFrame(P, index=obs.index, columns=CELL_TYPES)
-    A.uns["spot_diameter_um"] = 55
-    A.uns["about"] = ("Simulated Visium section of fetal cortex for the M2BD CC. "
-                      "obs['spot_group'] is what students see on Figure 6; "
-                      "obs['true_compartment'] is the answer -- instructor use only.")
-    return A
-
-
-# --------------------------------------------------------------------------
 
 # Columns that answer a graded question outright. The student build drops them:
-# obs['true_cell_type'] is Q4, obs['true_compartment'] is Q6a, and
-# obsm['true_proportions'] is Q5. The instructor build keeps them, and is what
+# obs['true_cell_type'] is Q4 and obsm['true_proportions'] is Q5. The instructor build keeps them, and is what
 # the expected-output report is computed from.
 TRUTH = {
     "bulk": {"obs": [], "obsm": ["true_proportions"]},
     "sc": {"obs": ["true_cell_type", "droplet_kind"], "obsm": []},
-    "visium": {"obs": ["true_compartment", "radial_fraction"], "obsm": ["true_proportions"]},
 }
 
 
@@ -404,34 +336,31 @@ def strip_truth(adata, which):
 
 
 def build_all(outdir=None, include_truth=False):
-    """Build the three datasets.
+    """Build the two simulated datasets.
 
-    include_truth=False is the student build: the columns that answer Q4, Q5
-    and Q6 in one line are removed. This is the default, because this function
+    include_truth=False is the student build: the columns that answer Q4 and Q5
+    in one line are removed. This is the default, because this function
     is what the notebook calls when it cannot reach the repository.
     """
     rng = np.random.default_rng(SEED)
     genes = gene_universe()
     E, idx = build_profiles(genes, rng)
     out = {"bulk": make_bulk(genes, E, idx, rng),
-           "sc": make_sc(genes, E, idx, rng),
-           "visium": make_visium(genes, E, idx, rng)}
+           "sc": make_sc(genes, E, idx, rng)}
     if not include_truth:
         out = {k: strip_truth(v, k) for k, v in out.items()}
     if outdir:
         import os
-        names = {"bulk": "bulk_cortex.h5ad", "sc": "fetal_cortex_sc.h5ad",
-                 "visium": "cortex_visium.h5ad"}
+        names = {"bulk": "bulk_cortex.h5ad", "sc": "fetal_cortex_sc.h5ad"}
         for k, a in out.items():
             a.write_h5ad(os.path.join(outdir, names[k]), compression="gzip")
-    return out["bulk"], out["sc"], out["visium"]
+    return out["bulk"], out["sc"]
 
 
 if __name__ == "__main__":
     out = sys.argv[1] if len(sys.argv) > 1 else "."
     truth = "--with-truth" in sys.argv
-    b, s, v = build_all(out, include_truth=truth)
+    b, s = build_all(out, include_truth=truth)
     print("instructor build" if truth else "student build")
     print("bulk   ", b.shape, list(b.obsm))
     print("sc     ", s.shape, list(s.obs.columns))
-    print("visium ", v.shape, list(v.obs.columns))

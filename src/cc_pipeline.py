@@ -14,7 +14,6 @@ import pandas as pd
 import scanpy as sc
 import anndata as ad
 import matplotlib
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from scipy import sparse, stats
@@ -384,44 +383,233 @@ def figure5(props, obs, labels=None, ax=None):
     return ax, df
 
 
-def figure6(v, spot_props, labels=None, axes=None):
-    if axes is None:
-        fig, axes = plt.subplots(1, 2, figsize=(11.2, 5.0),
-                                 gridspec_kw={"width_ratios": [1, 1.35]})
-    a0, a1 = axes
-    xy = v.obsm["spatial"]
-    groups = sorted(v.obs.spot_group.unique())
-    cmap = plt.get_cmap("Set2")
-    for i, g in enumerate(groups):
-        k = (v.obs.spot_group == g).values
-        a0.scatter(xy[k, 0], xy[k, 1], s=15, color=cmap(i), linewidth=0)
-        a0.annotate(str(g), (xy[k, 0].max() + 130, xy[k, 1].mean()), fontsize=12,
-                    fontweight="bold", va="center",
-                    bbox=dict(boxstyle="circle,pad=0.22", fc=cmap(i), ec=INK, lw=0.8))
-    a0.set_aspect("equal"); a0.set_xticks([]); a0.set_yticks([])
-    a0.set_xlim(xy[:, 0].min() - 150, xy[:, 0].max() + 450)
-    a0.annotate("", xy=(xy[:, 0].min() - 60, xy[:, 1].max()),
-                xytext=(xy[:, 0].min() - 60, xy[:, 1].min()),
-                arrowprops=dict(arrowstyle="<->", lw=1.0, color=INK))
-    a0.text(xy[:, 0].min() - 110, xy[:, 1].min(), "one surface", rotation=90,
-            fontsize=8, va="bottom", ha="right")
-    a0.text(xy[:, 0].min() - 110, xy[:, 1].max(), "the other surface", rotation=90,
-            fontsize=8, va="top", ha="right")
-    a0.set_title("Figure 6 — Visium section, numbered spot groups", loc="left")
+# ===========================================================================
+# BLOCK C2 -- real Visium: rat brain after status epilepticus
+# ===========================================================================
 
-    dom = spot_props.values.argmax(1)
-    names = [labels.get(c, c) if labels else c for c in spot_props.columns]
-    present = sorted(set(dom))
-    cm2 = plt.get_cmap("tab20")
-    for j in present:
-        k = dom == j
-        a1.scatter(xy[k, 0], xy[k, 1], s=15, color=cm2(j % 20), linewidth=0,
-                   label=f"{names[j]}  ({k.sum()})")
-    a1.set_aspect("equal"); a1.set_xticks([]); a1.set_yticks([])
-    a1.legend(fontsize=7, bbox_to_anchor=(1.005, 1), loc="upper left", frameon=False)
-    a1.set_title("dominant estimated cell type per spot  ·  55 µm spot ≈ 1–10 cells", loc="left",
-                 fontsize=9)
+RAT_MARKER_PANEL = {
+    "upper layers":     ["Cux2", "Lamp5", "Calb1"],
+    "layer 5":          ["Fezf2", "Bcl11b"],
+    "deep layers":      ["Tle4", "Foxp2", "Ccn2", "Nr4a2"],
+    "hippocampus":      ["Hpca", "Fibcd1", "Bok"],
+    "thalamus":         ["Prkcd", "Tcf7l2"],
+    "striatum":         ["Ppp1r1b", "Penk", "Gpr88"],
+    "oligodendrocytes": ["Mbp", "Plp1", "Mobp"],
+}
+
+# what Figure 6b puts side by side: a reactive gene, stable astrocyte and
+# microglia markers, and neuronal genes, so that "more cells" and "more
+# transcript per cell" can be told apart
+GLIOSIS_PANEL = ["Gfap", "Vim", "Aqp4", "Slc1a3", "Aif1", "Cd68", "Hpca", "Camk2a", "Snap25"]
+
+DOMAIN_COLOURS = ["#4c72b0", "#dd8452", "#55a868", "#c44e52", "#8172b3",
+                  "#937860", "#da8bc3", "#8c8c8c"]
+
+
+def visium_normalise(v):
+    """Raw counts to layers['counts']; log1p of counts per 10,000 in .X.
+
+    The file holds a subset of the genes, so each spot is scaled by its library
+    size over the whole transcriptome (obs['total_counts']), not by the sum of
+    the genes that happen to be kept.
+    """
+    v = v.copy()
+    v.layers["counts"] = v.X.copy()
+    v.X = sparse.diags(1e4 / v.obs.total_counts.values.astype(float)) @ sparse.csr_matrix(v.X, dtype=np.float32)
+    v.X = sparse.csr_matrix(v.X, dtype=np.float32)
+    v.X.data = np.log1p(v.X.data)
+    return v
+
+
+def _tissue(ax, v, section, alpha=1.0):
+    """Draw the H&E of one section; return the spot coordinates in image pixels."""
+    u = v.uns["spatial"][section]
+    k = (v.obs.section == section).values
+    xy = v.obsm["spatial"][k] * u["scalefactors"]["tissue_lowres_scalef"]
+    ax.imshow(u["images"]["lowres"], alpha=alpha)
+    pad = 12
+    ax.set_xlim(xy[:, 0].min() - pad, xy[:, 0].max() + pad)
+    ax.set_ylim(xy[:, 1].max() + pad, xy[:, 1].min() - pad)
+    ax.set_xticks([]); ax.set_yticks([])
+    for s in ax.spines.values():
+        s.set_visible(False)
+    return k, xy
+
+
+def _spots(ax, v, section, xy, **kw):
+    """Draw spots as discs of their true 55 um diameter, in image coordinates,
+    so that their size does not depend on the figure layout."""
+    from matplotlib.collections import EllipseCollection
+    u = v.uns["spatial"][section]
+    d = u["scalefactors"]["spot_diameter_fullres"] * u["scalefactors"]["tissue_lowres_scalef"]
+    n = len(xy)
+    ec = EllipseCollection(np.full(n, d), np.full(n, d), np.zeros(n), units="xy",
+                           offsets=xy, offset_transform=ax.transData, linewidth=0, **kw)
+    ax.add_collection(ec)
+    return ec
+
+
+def _label_spot(xy, inside):
+    """The spot of a domain that lies deepest inside it: thin curved bands have
+    a centroid that can fall outside them."""
+    from scipy.spatial import cKDTree
+    out = xy[~inside]
+    depth = cKDTree(out).query(xy[inside])[0] if len(out) else np.ones(inside.sum())
+    c = np.median(xy[inside], 0)
+    score = depth - 0.05 * np.sqrt(((xy[inside] - c) ** 2).sum(1))
+    return xy[inside][np.argmax(score)]
+
+
+def plot_spots(ax, v, section, what, vmax=None, cmap="magma_r"):
+    """One section, spots coloured by a gene or an obs column, over the H&E."""
+    k, xy = _tissue(ax, v, section, alpha=0.3)
+    if what in v.obs:
+        vals = v.obs[what].values[k].astype(float)
+    else:
+        X = v[k, what].X
+        vals = np.asarray(X.todense()).ravel() if sparse.issparse(X) else np.asarray(X).ravel()
+    ec = _spots(ax, v, section, xy, array=vals, cmap=cmap)
+    ec.set_clim(0, vmax if vmax is not None else np.percentile(vals, 99.5))
+    ax.set_title(f"{what}  ·  " + _section_title(v, section), loc="left", fontsize=9)
+    plt.colorbar(ec, ax=ax, fraction=0.04, pad=0.01)
+    return ec
+
+
+def _section_title(v, section):
+    o = v.obs[v.obs.section == section].iloc[0]
+    return f"{section}  ·  {o.condition}, day {o.days_post_SE}"
+
+
+def domain_means(v, genes, by="domain"):
+    """Mean log-normalised expression of each gene in each domain."""
+    genes = [g for g in genes if g in v.var_names]
+    X = v[:, genes].X
+    X = np.asarray(X.todense()) if sparse.issparse(X) else np.asarray(X)
+    return pd.DataFrame(X, index=v.obs_names, columns=genes).groupby(
+        v.obs[by].values, observed=True).mean()
+
+
+def figure6(v, section, axes=None):
+    if axes is None:
+        fig, axes = plt.subplots(1, 3, figsize=(15.5, 5.0),
+                                 gridspec_kw={"width_ratios": [1, 1, 1.55]})
+    a0, a1, a2 = axes
+    _tissue(a0, v, section)
+    a0.set_title("Figure 6 — " + _section_title(v, section) + "  ·  H&E", loc="left")
+
+    k, xy = _tissue(a1, v, section, alpha=0.35)
+    dom = v.obs.domain[k].astype(str).values
+    cats = list(v.obs.domain.cat.categories)
+    for i, d in enumerate(cats):
+        m = dom == d
+        if not m.any():
+            continue
+        _spots(a1, v, section, xy[m], facecolors=DOMAIN_COLOURS[i % 8])
+        a1.annotate(d, _label_spot(xy, m), fontsize=11, fontweight="bold", ha="center",
+                    va="center", color="white",
+                    bbox=dict(boxstyle="circle,pad=0.2", fc=DOMAIN_COLOURS[i % 8], ec="white", lw=1.2))
+    a1.set_title("numbered spatial domains (clustering of spots)", loc="left", fontsize=9)
+
+    genes, groups = [], []
+    for grp, gl in RAT_MARKER_PANEL.items():
+        gl = [g for g in gl if g in v.var_names]
+        genes += gl; groups += [grp] * len(gl)
+    X = v[:, genes].X
+    X = np.asarray(X.todense()) if sparse.issparse(X) else np.asarray(X)
+    mean = np.zeros((len(cats), len(genes))); frac = np.zeros_like(mean)
+    for i, d in enumerate(cats):
+        m = (v.obs.domain.astype(str) == d).values
+        mean[i] = X[m].mean(0); frac[i] = (X[m] > 0).mean(0)
+    z = (mean - mean.mean(0)) / (mean.std(0) + 1e-9)
+    yy, xx = np.meshgrid(np.arange(len(cats)), np.arange(len(genes)), indexing="ij")
+    sm = a2.scatter(xx.ravel(), yy.ravel(), s=frac.ravel() * 110 + 1,
+                    c=np.clip(z.ravel(), -1.5, 2.5), cmap="RdBu_r", linewidth=0)
+    a2.set_xticks(range(len(genes))); a2.set_xticklabels(genes, rotation=90, fontsize=8, style="italic")
+    a2.set_yticks(range(len(cats))); a2.set_yticklabels(cats, fontsize=10, fontweight="bold")
+    for t, d in zip(a2.get_yticklabels(), cats):
+        t.set_color(DOMAIN_COLOURS[cats.index(d) % 8])
+    a2.set_ylim(len(cats) - 0.4, -2.3)
+    prev, start, row = groups[0], 0, 0
+    for i, g in enumerate(groups + [None]):
+        if g != prev:
+            a2.axvline(i - 0.5, color=INK, lw=0.5, alpha=0.3)
+            y = -0.95 if row % 2 == 0 else -1.65
+            a2.plot([start - 0.35, i - 0.65], [y - 0.18, y - 0.18], color=INK, lw=1.6,
+                    solid_capstyle="butt", alpha=0.7)
+            a2.text((start + i - 1) / 2, y, prev, ha="center", va="bottom", fontsize=7, color=INK)
+            prev, start, row = g, i, row + 1
+    a2.set_ylabel("domain")
+    a2.set_title("markers by domain (4 sections)  ·  size = fraction of spots detecting, "
+                 "colour = scaled mean", loc="left", fontsize=9, pad=16)
+    a2.grid(axis="y", lw=0.3, alpha=0.3)
+    plt.colorbar(sm, ax=a2, pad=0.01, shrink=0.6)
     return axes
+
+
+def pseudobulk_log2fc(v, genes, days, by="domain"):
+    """log2 fold change SE / control per domain, on summed raw counts (CPM).
+
+    Summing every spot of a domain before comparing is the spatial version of a
+    pseudobulk: one number per gene per domain per section, as in bulk RNA-seq.
+    """
+    C = v.layers["counts"] if "counts" in v.layers else v.X
+    genes = [g for g in genes if g in v.var_names]
+    gi = [v.var_names.get_loc(g) for g in genes]
+    out = {}
+    for cond in ("control", "SE"):
+        k = ((v.obs.condition == cond) & (v.obs.days_post_SE == days)).values
+        rows = {}
+        for d in v.obs.domain.cat.categories:
+            m = k & (v.obs[by].astype(str) == d).values
+            tot = np.asarray(C[m].sum(0)).ravel()
+            lib = v.obs.total_counts.values[m].sum()
+            rows[d] = tot[gi] / lib * 1e6 if lib > 0 else np.full(len(gi), np.nan)
+        out[cond] = pd.DataFrame(rows, index=genes)
+    return np.log2((out["SE"] + 1) / (out["control"] + 1))
+
+
+def figure6b(v, gene="Gfap", fig=None):
+    if fig is None:
+        fig = plt.figure(figsize=(13.5, 9.0))
+    gs = fig.add_gridspec(2, 4, height_ratios=[1, 0.9], hspace=0.22, wspace=0.08)
+    order = [("control", 5), ("SE", 5), ("control", 40), ("SE", 40)]
+    secs = [v.obs.section[(v.obs.condition == c) & (v.obs.days_post_SE == d)].iloc[0]
+            for c, d in order]
+    X = v[:, gene].X
+    vals = np.asarray(X.todense()).ravel() if sparse.issparse(X) else np.asarray(X).ravel()
+    vmax = np.percentile(vals, 99.5)
+    for j, s in enumerate(secs):
+        ax = fig.add_subplot(gs[0, j])
+        k, xy = _tissue(ax, v, s, alpha=0.3)
+        sm = _spots(ax, v, s, xy, array=vals[k], cmap="magma_r")
+        sm.set_clim(0, vmax)
+        ax.set_title(_section_title(v, s), loc="left", fontsize=9)
+        if j == 0:
+            ax.text(0, 1.13, f"Figure 6b — {gene} in space, control vs SE (same colour scale)",
+                    transform=ax.transAxes, fontsize=10, fontweight="bold", color=INK)
+    cb = fig.colorbar(sm, ax=fig.axes[-1], fraction=0.04, pad=0.01)
+    cb.set_label(f"{gene}, log1p(counts per 10k)", fontsize=8)
+
+    for j, days in enumerate((5, 40)):
+        ax = fig.add_subplot(gs[1, 2 * j: 2 * j + 2])
+        lfc = pseudobulk_log2fc(v, GLIOSIS_PANEL, days)
+        im = ax.imshow(lfc.values, cmap="RdBu_r", vmin=-2.5, vmax=2.5, aspect="auto")
+        ax.set_xticks(range(lfc.shape[1])); ax.set_xticklabels(lfc.columns, fontweight="bold")
+        for t, d in zip(ax.get_xticklabels(), lfc.columns):
+            t.set_color(DOMAIN_COLOURS[list(v.obs.domain.cat.categories).index(d) % 8])
+        ax.set_yticks(range(lfc.shape[0]))
+        ax.set_yticklabels(lfc.index if j == 0 else [], style="italic")
+        for (r, c), x in np.ndenumerate(lfc.values):
+            if np.isfinite(x):
+                ax.text(c, r, f"{x:+.1f}", ha="center", va="center", fontsize=7,
+                        color="white" if abs(x) > 1.4 else INK)
+        ax.set_xlabel("domain")
+        ax.set_title(f"log2 fold change SE / control, day {days}  ·  pseudobulk per domain",
+                     loc="left", fontsize=9)
+        for s_ in ax.spines.values():
+            s_.set_visible(False)
+    fig.colorbar(im, ax=ax, fraction=0.03, pad=0.01).set_label("log2 FC", fontsize=8)
+    return fig
 
 
 NEURONAL_SCORE_GENES = ["SNAP25", "SYT1", "NEUROD2", "NEUROD6", "RBFOX3", "MAP2",
@@ -499,10 +687,13 @@ def figure5b(res, synaptic, immune, ax=None):
 # ===========================================================================
 
 def main(datadir, outdir):
+    # headless only here: imported from the notebook, the inline backend must
+    # stay active or no figure is ever displayed
+    plt.switch_backend("Agg")
     os.makedirs(outdir, exist_ok=True)
     bulk = ad.read_h5ad(os.path.join(datadir, "bulk_cortex.h5ad"))
     scd = ad.read_h5ad(os.path.join(datadir, "fetal_cortex_sc.h5ad"))
-    vis = ad.read_h5ad(os.path.join(datadir, "cortex_visium.h5ad"))
+    vis = ad.read_h5ad(os.path.join(datadir, "rat_visium_SE.h5ad"))
     report = {}
 
     b, de, vr = block_a(bulk)
@@ -593,24 +784,34 @@ def main(datadir, outdir):
     report["Q5_immune_sig_before_adjust"] = int(
         ((adj.pval_crude[imm] < 0.05) & (adj.log2FC_crude[imm] > 0)).sum())
 
-    common = [g for g in sig_mat.index if g in vis.var_names]
-    v = vis.copy()
-    Xv = _dense(v[:, common])
-    Xv = Xv / (_dense(v).sum(1, keepdims=True)) * 1e4
-    spot_props = deconvolve(pd.DataFrame(Xv, index=v.obs_names, columns=common),
-                            sig_mat.loc[common])
-    fig, axes = plt.subplots(1, 2, figsize=(11.4, 5.2), gridspec_kw={"width_ratios": [1, 1.35]})
-    figure6(v, spot_props, labels, axes)
+    v = visium_normalise(vis)
+    report["visium_spots_per_section"] = v.obs.section.value_counts().sort_index().to_dict()
+    report["visium_median_umi_per_section"] = (
+        v.obs.groupby("section", observed=True).total_counts.median().round(0).to_dict())
+    fig, axes = plt.subplots(1, 3, figsize=(15.5, 5.0), gridspec_kw={"width_ratios": [1, 1, 1.55]})
+    figure6(v, "B_L1_S2", axes)
     fig.tight_layout(); fig.savefig(f"{outdir}/figure6.png"); plt.close(fig)
-    grp = v.obs.groupby("spot_group", observed=True)
-    report["spot_group_to_compartment"] = grp.true_compartment.agg(lambda x: x.mode()[0]).to_dict()
-    report["spot_group_mean_radial_fraction"] = grp.radial_fraction.mean().round(3).to_dict()
-    report["radial_order_ventricle_to_pia"] = (
-        grp.radial_fraction.mean().sort_values().index.tolist())
-    dom = spot_props.values.argmax(1)
-    report["spot_dominant_by_group"] = (
-        pd.crosstab(v.obs.spot_group.values, [labels.get(spot_props.columns[i], spot_props.columns[i]) for i in dom])
-        .idxmax(1).to_dict())
+    fig = figure6b(v, "Gfap"); fig.savefig(f"{outdir}/figure6b.png", bbox_inches="tight"); plt.close(fig)
+    if "true_domain" in v.obs:
+        report["domain_number_to_anatomy"] = (v.obs.groupby("domain", observed=True).true_domain
+                                              .agg(lambda x: x.mode()[0]).to_dict())
+    # cortical depth: median distance from the white matter, in um (spot pitch = 100 um)
+    from scipy.spatial import cKDTree
+    wm = report.get("domain_number_to_anatomy", {})
+    wm = [d for d, a in wm.items() if a.startswith("white matter")]
+    if wm:
+        depth = {}
+        for s in v.obs.section.cat.categories:
+            k = (v.obs.section == s).values
+            xy = v.obsm["spatial"][k]
+            pitch = np.median(cKDTree(xy).query(xy, k=2)[0][:, 1])
+            t = cKDTree(xy[(v.obs.domain[k].astype(str) == wm[0]).values])
+            d, _ = t.query(xy)
+            depth[s] = pd.Series(d / pitch * 100).groupby(v.obs.domain[k].astype(str).values).median()
+        depth = pd.DataFrame(depth)
+        report["median_distance_from_white_matter_um"] = depth.mean(1).round(0).to_dict()
+    report["log2fc_SE_vs_control_day5"] = pseudobulk_log2fc(v, GLIOSIS_PANEL, 5).round(2).to_dict()
+    report["log2fc_SE_vs_control_day40"] = pseudobulk_log2fc(v, GLIOSIS_PANEL, 40).round(2).to_dict()
 
     with open(f"{outdir}/expected_outputs.json", "w") as f:
         json.dump(report, f, indent=2, default=str)

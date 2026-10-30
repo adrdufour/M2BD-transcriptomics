@@ -13,7 +13,7 @@ Bulk RNA-seq · single-cell · spatial transcriptomics — a two-hour tutorial w
 
 **2. Save your own copy.** *File → Save a copy in Drive.* Do this **before you run anything**, or nothing you type survives the end of the session.
 
-**3. Run the first cell.** It takes about two minutes: it installs `scanpy` and downloads the three datasets. Start it while the setup is being explained.
+**3. Run the first cell.** It takes about two minutes: it installs `scanpy` and downloads the three datasets. Every figure is drawn in the notebook, right under the cell that makes it. Start it while the setup is being explained.
 
 **4. Work through the three blocks.** Each one ends with the figures the worksheet asks about, by number.
 
@@ -21,18 +21,18 @@ Bulk RNA-seq · single-cell · spatial transcriptomics — a two-hour tutorial w
 |---|---|---|---|
 | **A** — bulk RNA-seq | 15 min | Figure 1, Figure 2 | Q1, Q2 |
 | **B** — single-cell | 25 min | Figure 3, Figure 4 | Q3, Q4 |
-| **C** — spatial + integration | 20 min | Figure 5, Figure 6 | Q5, Q6, Q7 |
+| **C** — spatial + integration | 20 min | Figures 5, 6, 6b | Q5, Q6, Q7 |
 
 **Answer the worksheet as you go.** The last ten minutes are not enough for seven questions.
 
-You are marked on how you read your own figures, on the alternative explanation you ruled out, and on the limitation you name — **not on whether your code ran**. If a cell fails, move on: [`handout/CC_figures_handout.pdf`](handout/CC_figures_handout.pdf) has all six figures and lets you answer every question without a working runtime.
+You are marked on how you read your own figures, on the alternative explanation you ruled out, and on the limitation you name — **not on whether your code ran**. If a cell fails, move on: [`handout/CC_figures_handout.pdf`](handout/CC_figures_handout.pdf) has every figure and lets you answer every question without a working runtime.
 
 ### If something breaks
 
 | Problem | What to do |
 |---|---|
 | The install cell fails | *Runtime → Restart session*, then run it again. |
-| The download fails or the network is blocked | Nothing to do — the notebook rebuilds the identical data locally in about five seconds and prints `built locally`. |
+| The download fails or the network is blocked | The notebook rebuilds the two simulated datasets locally in about five seconds and prints `built locally`. The Visium data is real and cannot be rebuilt: answer Q6 from Figures 6 and 6b of the PDF handout. |
 | A later cell errors | Skip it and keep going. Answer that question from the PDF handout. |
 | You lost your work | You did not save a copy in Drive at step 2. Reopen the badge and start again — the notebook runs end to end in under four minutes. |
 
@@ -44,9 +44,9 @@ You may work in pairs at the keyboard. **The answers you hand in are individual.
 
 ```
 M2BD_CC_practical.ipynb    the student notebook — the only file you need
-data/                      the three datasets (22 MB)
+data/                      the three datasets (38 MB)
 handout/                   the printable worksheet and the figure handout
-figures/                   reference output of the six figures
+figures/                   reference output of the figures
 src/                       the generator and the analysis, for reproducibility
 ```
 
@@ -56,17 +56,19 @@ src/                       the generator and the analysis, for reproducibility
 |---|---|
 | `bulk_cortex.h5ad` | 64 cortex samples × 2,747 genes. A developmental series of 24 controls from 8 to 39 post-conceptional weeks, plus an age-matched case/control contrast of 40 late-fetal samples. Raw counts, with age, region, sex, RIN, post-mortem interval and sequencing batch. |
 | `fetal_cortex_sc.h5ad` | 8,000 nuclei × 2,747 genes from mid-gestation cortex. **Raw counts, no QC applied** — that is Block B's first job. Contains empty droplets, doublets and damaged cells, as any real run does. |
-| `cortex_visium.h5ad` | One Visium section, 1,496 spots of 55 µm with `obsm['spatial']` coordinates. Six numbered spot groups, unannotated. |
+| `rat_visium_SE.h5ad` | **Real data.** Four coronal Visium sections of rat brain hemisphere, control vs status epilepticus (SE), 5 and 40 days after SE: 13,242 spots of 55 µm, raw counts for 5,009 genes, `obsm['spatial']` coordinates and the H&E image of each section in `uns['spatial']`. Eight numbered spatial domains, unannotated. |
 
 ### A word about the data
 
-**The data is simulated.** It is simulated *from* the real biology — the cell types, the marker genes, the developmental proportion curves and the two co-expression modules all come from the literature cited in the lecture (Kang 2011, Voineagu 2011, Nowakowski 2017, Polioudakis 2019, Velmeshev 2019, Braun 2023) — but no real cohort was analysed here, and nothing you find in it is a finding.
+**The bulk and single-cell data are simulated; the Visium data is real.** The first two are simulated *from* the real biology — the cell types, the marker genes, the developmental proportion curves and the two co-expression modules all come from the literature cited in the lecture (Kang 2011, Voineagu 2011, Nowakowski 2017, Polioudakis 2019, Velmeshev 2019, Braun 2023) — but no real cohort was analysed here, and nothing you find in it is a finding.
 
-It is built this way on purpose. All three datasets come from **one shared cell-type expression profile matrix**, so the bulk signal genuinely is
+They are built this way on purpose. Both come from **one shared cell-type expression profile matrix**, so the bulk signal genuinely is
 
 $$ y_g \;=\; \sum_k p_k \, e_{g,k} $$
 
 and the single-cell object is genuinely a valid reference for deconvolving the bulk object. That is what makes Q5 — the keystone question — answerable with real evidence rather than by assertion. It also means every number is reproducible: the generator is seeded, so your figures match everyone else's unless you change a parameter, which the notebook invites you to do.
+
+The Visium sections come from an experiment on rats after a status epilepticus. The spatial domains are the authors' own clustering of all 16 sections of that experiment, renumbered at random. Block C2 uses them to show what simulated data cannot: a real tissue, with its real section-to-section differences in depth, and a real spot that mixes several cells.
 
 ---
 
@@ -77,7 +79,7 @@ and the single-cell object is genuinely a valid reference for deconvolving the b
 Nothing to host and nothing to configure. The notebook resolves its data in this order:
 
 1. Download from `https://raw.githubusercontent.com/adrdufour/M2BD-transcriptomics/main/data`.
-2. If that fails, or if what arrives is not an HDF5 file, rebuild locally from seed `20260904` (~5 s).
+2. If that fails, or if what arrives is not an HDF5 file, rebuild the bulk and single-cell data locally from seed `20260904` (~5 s). The Visium data cannot be rebuilt; without it, Block C2 stops with a message pointing to the handout.
 
 To point a fork at your own copy, edit `REPO` in the setup cell, or set `M2BD_DATA_URL` in the environment. **If you fork this under a different name, update `REPO` in the setup cell and the badge URL at the top of this README** — both hard-code `adrdufour/M2BD-transcriptomics`.
 
@@ -96,10 +98,11 @@ The cell to check on every screen while circulating is `MY_LABELS` at the end of
 
 ### What is deliberately not here
 
-The answer key, the marking sheet and the expected numerical outputs are **not in this repository**, and `.gitignore` is written to keep them out. The shipped datasets are the **student build**: the columns that would answer Q4, Q5 and Q6 in a single line (`obs['true_cell_type']`, `obs['true_compartment']`, `obsm['true_proportions']`) are stripped. Rebuild the instructor version, with those columns intact, from `src/`:
+The answer key, the marking sheet and the expected numerical outputs are **not in this repository**, and `.gitignore` is written to keep them out. The shipped datasets are the **student build**: the columns that would answer Q4, Q5 and Q6 in a single line (`obs['true_cell_type']`, `obsm['true_proportions']`, and the Visium `obs['true_domain']`) are stripped. Rebuild the instructor version, with those columns intact, from `src/`:
 
 ```bash
 python src/cc_datasets.py path/to/instructor_data --with-truth
+python src/prepare_visium.py path/to/rat_SE_visium_all16.h5ad path/to/instructor_data --with-truth
 python src/cc_pipeline.py path/to/instructor_data path/to/figures
 ```
 
@@ -110,8 +113,10 @@ python src/cc_pipeline.py path/to/instructor_data path/to/figures
 ```bash
 pip install scanpy leidenalg igraph reportlab openpyxl
 
-python src/cc_datasets.py data                 # student build (default)
-python src/cc_pipeline.py data figures         # the six figures
+python src/cc_datasets.py data                 # simulated bulk + single-cell, student build
+python src/seurat_to_h5ad.py whole_clustering_subclustering_Seurat_objects.RData rat_SE_visium_all16.h5ad
+python src/prepare_visium.py rat_SE_visium_all16.h5ad data   # the four Visium sections
+python src/cc_pipeline.py data figures         # the figures
 python src/build_notebook.py M2BD_CC_practical.ipynb
 python src/build_handout.py figures handout/CC_figures_handout.pdf
 ```
@@ -120,14 +125,14 @@ python src/build_handout.py figures handout/CC_figures_handout.pdf
 
 ---
 
-## The six figures
+## The figures
 
 | | |
 |---|---|
 | <img src="figures/figure1.png" width="380"> | <img src="figures/figure2.png" width="380"> |
 | **Figure 1** — PCA of the developmental bulk samples | **Figure 2** — volcano, cases vs controls |
 | <img src="figures/figure4.png" width="380"> | <img src="figures/figure6.png" width="380"> |
-| **Figure 4** — UMAP and marker dot plot | **Figure 6** — Visium section, cell types per spot |
+| **Figure 4** — UMAP and marker dot plot | **Figure 6** — Visium section of rat brain, numbered spatial domains |
 
 ---
 

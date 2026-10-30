@@ -54,10 +54,17 @@ FIGURES = [
            "covariate. A gene on the dashed diagonal is one that composition does not explain; a "
            "gene pulled toward zero is one where it does."),
     ("figure6.png", "Figure 6",
-     "Visium section with cell types mapped onto the spots",
-     "Q6", "About 1,500 spots, 55 um across. Left: the six numbered spot groups, in no "
-           "particular order. Right: the dominant estimated cell type per spot, from the same "
-           "single-cell signature."),
+     "Visium section of rat brain, numbered spatial domains",
+     "Q6", "Real data: a coronal section of a rat hemisphere (control, day 5), about 3,400 spots "
+           "of 55 um, 100 um apart. Left: H&E. Middle: the eight spatial domains found by "
+           "clustering spots, numbered in no particular order. Right: marker genes by domain, "
+           "over the four sections of the dataset."),
+    ("figure6b.png", "Figure 6b",
+     "Gfap in space, control vs status epilepticus",
+     "Q6", "Top: Gfap on the four sections (control and SE, 5 and 40 days after SE), one shared "
+           "colour scale. Bottom: log2 fold change SE / control per domain, every spot of a "
+           "domain summed into one pseudobulk profile, for reactive, astrocytic, microglial and "
+           "neuronal genes."),
 ]
 
 
@@ -76,7 +83,7 @@ def header(c, page_no):
 def cover(c):
     c.setFillColor(INK)
     c.setFont("Helvetica-Bold", 26)
-    c.drawString(M, H - 62 * mm, "The six figures")
+    c.drawString(M, H - 62 * mm, "The figures")
     c.setFont("Helvetica", 13)
     c.setFillColor(MUTED)
     c.drawString(M, H - 72 * mm,
@@ -96,7 +103,8 @@ def cover(c):
         "Every figure is numbered exactly as the worksheet refers to it, and each page names the "
         "question it belongs to. Figure 5b is the extra panel that Block C produces alongside "
         "Figure 5; the worksheet does not ask about it directly, but Q5 is much easier to answer "
-        "with it in front of you.", style)
+        "with it in front of you. Figures 1-5 come from simulated data; Figures 6 and 6b are "
+        "real Visium data.", style)
     p.wrapOn(c, W - 2 * M - 60 * mm, 100 * mm)
     p.drawOn(c, M, H - 128 * mm)
 
@@ -157,7 +165,7 @@ def figure_page(c, path, num, title, q, desc, page_no):
 
 def main(figdir, out):
     c = canvas.Canvas(out, pagesize=PAGE)
-    c.setTitle("The six figures — M2BD continuous assessment")
+    c.setTitle("The figures — M2BD continuous assessment")
     c.setAuthor("Adrien Dufour, Inserm")
     cover(c)
     for i, (fn, num, title, q, desc) in enumerate(FIGURES):

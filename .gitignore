@@ -44,3 +44,8 @@ executed.ipynb
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Full Visium experiment converted from the Seurat object: instructor only
+visium_source/
+*rat_SE_visium_all16*
+*.RData
